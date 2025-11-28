@@ -1,0 +1,35 @@
+[
+  {
+    "id": "mock-1",
+    "name": "Downtown 5K Fun Run",
+    "start_time": "2025-06-14T09:00:00",
+    "url": "https://example.com/races/downtown-5k",
+    "venue_name": "Downtown Park",
+    "address": "123 Park Ave, YourCity, ST 12345",
+    "latitude": 40.7128,
+    "longitude": -74.0060,
+    "source": "mock"
+  },
+  {
+    "id": "mock-2",
+    "name": "Riverside Half Marathon",
+    "start_time": "2025-07-20T07:00:00",
+    "url": "https://example.com/races/riverside-half",
+    "venue_name": "Riverside Trailhead",
+    "address": "456 River Rd, YourCity, ST 12345",
+    "latitude": 40.7158,
+    "longitude": -74.0150,
+    "source": "mock"
+  },
+  {
+    "id": "mock-3",
+    "name": "Neighborhood 10K",
+    "start_time": "2025-08-09T08:00:00",
+    "url": "https://example.com/races/neighborhood-10k",
+    "venue_name": "Neighborhood Center",
+    "address": "789 Community Ln, YourCity, ST 12345",
+    "latitude": 40.7090,
+    "longitude": -74.0005,
+    "source": "mock"
+  }
+]
