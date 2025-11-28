@@ -1,0 +1,116 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Local Road Races</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-sA+e2d0i6bGkq2gJvQ2B0uVpt2qgZ1q1qvJi0Jm6tmM=" crossorigin=""/>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 0; }
+    #controls { padding: 10px; background: #f6f6f6; display:flex; gap:8px; align-items:center; }
+    #map { height: 60vh; }
+    #list { padding: 10px; }
+    .event { padding: 8px; border-bottom: 1px solid #eee; }
+    .btn { padding: 6px 10px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <button id="findBtn" class="btn">Find races near me</button>
+    <label>Radius (km): <input id="radiusInput" type="number" value="10" style="width:70px" /></label>
+    <input id="queryInput" placeholder="e.g. 5k, half" style="flex:1" />
+    <div id="status"></div>
+  </div>
+
+  <div id="map"></div>
+  <div id="list"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-o9N1jEw3nuqg7xw1g5q8wK+FZlUp0bX6oGr3m8S/0+M=" crossorigin=""></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const listEl = document.getElementById('list');
+    const radiusInput = document.getElementById('radiusInput');
+    const queryInput = document.getElementById('queryInput');
+
+    const map = L.map('map').setView([39.5, -98.35], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    let markersLayer = L.layerGroup().addTo(map);
+    let userMarker = null;
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+    }
+
+    async function findRaces() {
+      setStatus('Locating you...');
+      if (!navigator.geolocation) {
+        setStatus('Geolocation not supported in this browser.');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        map.setView([lat, lon], 12);
+        if (userMarker) userMarker.setLatLng([lat, lon]);
+        else userMarker = L.marker([lat, lon], {title: 'You'}).addTo(map);
+
+        const radius = parseFloat(radiusInput.value) || 10;
+        const q = queryInput.value || '';
+        setStatus('Fetching nearby events...');
+        try {
+          const resp = await fetch(`/api/races?lat=${lat}&lon=${lon}&radius_km=${radius}&q=${encodeURIComponent(q)}`);
+          const data = await resp.json();
+          setStatus(`Found ${data.events ? data.events.length : 0} events (${data.source})`);
+          renderEvents(data.events || []);
+        } catch (err) {
+          console.error(err);
+          setStatus('Error fetching events');
+        }
+      }, (err) => {
+        console.error(err);
+        setStatus('Could not get your location. Try allowing location access.');
+      }, { timeout: 10000 });
+    }
+
+    function renderEvents(events) {
+      markersLayer.clearLayers();
+      listEl.innerHTML = '';
+      if (!events.length) {
+        listEl.innerHTML = '<p>No events found.</p>';
+        return;
+      }
+      events.forEach(ev => {
+        const evDiv = document.createElement('div');
+        evDiv.className = 'event';
+        evDiv.innerHTML = `<strong>${ev.name}</strong><div>${ev.start_time ? new Date(ev.start_time).toLocaleString() : ''}</div>
+          <div>${ev.venue_name || ''}</div>
+          <div>${ev.address || ''}</div>
+          <div><a href="${ev.url}" target="_blank" rel="noopener">Event page</a></div>`;
+        listEl.appendChild(evDiv);
+
+        if (ev.latitude && ev.longitude) {
+          const m = L.marker([ev.latitude, ev.longitude]).addTo(markersLayer);
+          m.bindPopup(`<strong>${ev.name}</strong><br>${ev.venue_name || ''}`);
+        }
+      });
+      // Fit to markers if any
+      const group = markersLayer.getLayers();
+      if (group.length) {
+        const bounds = L.latLngBounds(group.map(m => m.getLatLng()));
+        bounds.extend(userMarker.getLatLng());
+        map.fitBounds(bounds, {padding: [40,40]});
+      }
+    }
+
+    document.getElementById('findBtn').addEventListener('click', findRaces);
+
+    // Optional: auto-run
+    // findRaces();
+  </script>
+</body>
+</html>
