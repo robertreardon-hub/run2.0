@@ -1,0 +1,102 @@
+const express = require('express');
+const fetch = require('node-fetch');
+const dotenv = require('dotenv');
+const cors = require('cors');
+const path = require('path');
+const mockRaces = require('./mock_races.json');
+
+dotenv.config();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Serve static frontend
+app.use(express.static(path.join(__dirname, 'public')));
+
+/**
+ * Normalize Eventbrite event to our shape
+ * shape: { id, name, start_time, url, venue_name, address, latitude, longitude }
+ */
+function normalizeEventbriteEvent(ev) {
+  const venue = ev.venue || {};
+  const address = venue.address || {};
+  return {
+    id: ev.id,
+    name: ev.name && ev.name.text ? ev.name.text : ev.name,
+    start_time: ev.start && ev.start.local ? ev.start.local : ev.start,
+    url: ev.url,
+    venue_name: venue.name || '',
+    address: [address.address_1, address.address_2, address.city, address.region, address.postal_code]
+      .filter(Boolean)
+      .join(', '),
+    latitude: venue.latitude ? parseFloat(venue.latitude) : null,
+    longitude: venue.longitude ? parseFloat(venue.longitude) : null,
+    source: 'eventbrite'
+  };
+}
+
+// GET /api/races?lat=..&lon=..&radius_km=..&q=run
+app.get('/api/races', async (req, res) => {
+  const lat = parseFloat(req.query.lat);
+  const lon = parseFloat(req.query.lon);
+  const radius_km = req.query.radius_km || '10';
+  const q = req.query.q || 'run OR race OR 5k OR 10k OR half marathon';
+
+  if (isNaN(lat) || isNaN(lon)) {
+    // Return mock data if location not provided or invalid
+    return res.json({
+      source: 'mock',
+      events: mockRaces
+    });
+  }
+
+  const token = process.env.EVENTBRITE_TOKEN;
+  if (!token) {
+    // Fallback: return mock data
+    return res.json({
+      source: 'mock',
+      events: mockRaces
+    });
+  }
+
+  try {
+    const within = `${radius_km}km`;
+    const url = `https://www.eventbriteapi.com/v3/events/search/?q=${encodeURIComponent(q)}&location.latitude=${lat}&location.longitude=${lon}&location.within=${within}&expand=venue&sort_by=date`;
+    const resp = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      return res.status(resp.status).json({ error: 'Eventbrite error', details: text });
+    }
+
+    const data = await resp.json();
+    const events = (data.events || [])
+      .map(normalizeEventbriteEvent)
+      .filter(e => e.latitude && e.longitude);
+
+    return res.json({
+      source: 'eventbrite',
+      pagination: data.pagination || {},
+      events
+    });
+  } catch (err) {
+    console.error('Error fetching Eventbrite:', err);
+    res.status(500).json({ error: 'server_error', details: err.message });
+  }
+});
+
+// Fallback route for unhandled requests — serve the frontend
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`local-races-mvp listening on http://localhost:${PORT}`);
+});
